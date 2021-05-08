@@ -1,0 +1,40 @@
+####### MUTABLE SETTINGS
+
+# scenarios are fixed-size and configurable via the api
+scenarios:
+  - id: 0x12
+    module: light-sensor-1                # nbit, depending on the size defined, ie 0x04 for light-sensor-1
+    priority: when-free                   # 2bit, off, when-free, always
+    report: pad                           # 2bit, off, pad, force-pad, force
+    power: solar, battery, battery-mutex  # 2bit
+    consumption: 4%                       # 4bit, estimated consumption of power of total capacity
+                                          #  this needs to be estimated beforehand based on arguments given
+    arguments: 0x77fefe77                 # 32bit, task handler arguments
+
+####### IMMUTABLE SETTINGS, EXPORTED FROM THE COMPILED EMBEDDED SYSTEM
+
+scenarioBits: 5 # how many bits to use to identify scenarios, also the size reserved for all scenarios
+moduleBits: 4 # how many bits to use to identify hardware module
+
+values:
+  priority:
+    off: 0x0
+    when-free: 0x1
+    always: 0x3
+  report:
+    off: 0x0
+    pad: 0x1
+    force-pad: 0x2
+    force: 0x3
+  power:
+    solar: 0x0
+    battery: 0x1
+    battery-mutex: 0x2
+
+# modules are describers of the hardware attached to the system
+#  the ID gets converted to
+modules:
+  light-sensor-1:
+    id: 0x4
+  water-sensor-1:
+    id: 0x5

@@ -1,0 +1,4 @@
+scenarios:
+  - id: 0x12
+    arguments: 0x77dffe77
+    priority: force
