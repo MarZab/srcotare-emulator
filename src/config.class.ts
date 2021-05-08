@@ -3,6 +3,7 @@
  */
 
 export const TASK_ID_SIZE = 4;
+export const TEMPLATE_ID_SIZE = 4;
 
 export interface TaskConfig {
   // message size in bits, 0 for variable length
@@ -11,9 +12,11 @@ export interface TaskConfig {
 
 export class Config {
   private _tasks: Map<number, TaskConfig>;
+  private _templates: Map<number, number[]>;
 
   constructor() {
     this._tasks = new Map();
+    this._templates = new Map();
   }
 
   getTask(taskId: number): TaskConfig {
@@ -41,5 +44,28 @@ export class Config {
     }
     this._tasks.set(taskId, taskConfig);
     return;
+  }
+
+  getTemplate(templateId: number): number[] {
+    if (templateId > Math.pow(2, TEMPLATE_ID_SIZE)) {
+      throw new Error('Template ID out of bounds');
+    }
+    if (templateId === 0) {
+      throw new Error('Template ID out of bounds');
+    }
+    if (this._templates.has(templateId)) {
+      return this._templates.get(templateId) as number[];
+    }
+    throw new Error('Template not defined');
+  }
+
+  setTemplate(templateId: number, config: number[]): void {
+    if (templateId > Math.pow(2, TEMPLATE_ID_SIZE)) {
+      throw new Error('Template ID out of bounds');
+    }
+    if (templateId === 0) {
+      throw new Error('Template ID out of bounds');
+    }
+    this._templates.set(templateId, config);
   }
 }

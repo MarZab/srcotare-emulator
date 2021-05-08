@@ -1,9 +1,7 @@
-import { BitStream, BitView } from 'bit-buffer';
+import { BitStream } from 'bit-buffer';
 
-import { Config, TASK_ID_SIZE } from './config.class';
+import { Config, TASK_ID_SIZE, TEMPLATE_ID_SIZE } from './config.class';
 
-const TEMPLATE_ID_SIZE = 4;
-const BLOCK_SIZE = 50 * 8; // part size
 const MAX_SIZE = 320; // transmission max size 320
 
 /**
@@ -79,13 +77,31 @@ export class ClientReport {
 
       const type = stream.readBits(2);
       switch (type) {
-        /*
         case ClientReportType.TEMPLATE: {
           const templateId = stream.readBits(TEMPLATE_ID_SIZE);
-          // loop template
+
+          const template = this._config.getTemplate(templateId);
+
+          for (const taskId of template) {
+            const length = this._config.getTask(taskId).reportMessageSize;
+
+            const inStream = stream.readBitStream(length);
+            inStream.bigEndian = true;
+
+            const outStream = new BitStream(
+              new ArrayBuffer(Math.ceil(length / 8)),
+            );
+            outStream.bigEndian = true;
+
+            outStream.writeBitStream(inStream, length);
+            outStream.index = 0;
+
+            this._data.set(taskId, outStream);
+          }
+
           break;
         }
-        */
+
         case ClientReportType.KEY_VALUE: {
           while (stream.bitsLeft > 0) {
             const taskId = stream.readBits(TASK_ID_SIZE);
@@ -160,20 +176,32 @@ export class ClientReport {
         }
         break;
       }
-      /*
+
       case ClientReportType.TEMPLATE: {
         if (!templateId) {
           throw new Error('Template ID Required');
         }
-        stream.writeBits(this._type, 2);
+        stream.writeBits(ClientReportType.TEMPLATE, 2);
         stream.writeBits(templateId, TEMPLATE_ID_SIZE);
-        // todo loop template items
+
+        const template = this._config.getTemplate(templateId);
+
+        for (const taskId of template) {
+          const length = this._config.getTask(taskId).reportMessageSize;
+          if (!this._data.has(taskId)) {
+            // write zeros
+            stream.writeBitStream(
+              new BitStream(new ArrayBuffer(Math.ceil(length / 8))),
+              length,
+            );
+          } else {
+            const taskBitStream = this._data.get(taskId) as BitStream;
+            stream.writeBitStream(taskBitStream, length);
+          }
+        }
+
         break;
       }
-      case ClientReportType.SYSTEM:
-      case ClientReportType.CUSTOM: {
-        stream.writeBits(this._type, 2);
-      }*/
       default:
         throw new Error(`Template type ${type} not supported`);
     }
