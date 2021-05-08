@@ -1,16 +1,15 @@
-import { BitStream } from 'bit-buffer';
-import { types } from 'util';
+import { BitStream, BitView } from 'bit-buffer';
 
 import { Config, TASK_ID_SIZE } from './config.class';
 
 const TEMPLATE_ID_SIZE = 4;
 const BLOCK_SIZE = 50 * 8; // part size
-const MAX_SIZE = 320 * 8; // transmission max size
+const MAX_SIZE = 320; // transmission max size 320
 
 /**
  * The type of the transmission
  */
-enum ClientReportType {
+export enum ClientReportType {
   /**
    * A template report
    * @example
@@ -60,68 +59,108 @@ enum ClientReportType {
 }
 
 export class ClientReport {
-  private _data: Map<number, ArrayBuffer>;
-  private _type: ClientReportType;
-
-  private finalized = false;
+  private _data: Map<number, BitStream>;
 
   /**
    * Create a new Client Report or read an existing one
-   * @param _config - system wide config
-   * @param v - optional
+   * @param config - system wide config
+   * @param data - data from existing report to parse, if any
    */
-  constructor(_config: Config, v: ClientReportType);
-  constructor(_config: Config, v: ArrayBuffer);
-  constructor(private _config: Config, v: ArrayBuffer | ClientReportType) {
-    if (types.isArrayBuffer(v)) {
-      this.finalized = true;
-      const stream = new BitStream(v);
-      this._type = stream.readBits(2);
+  constructor(private _config: Config, data?: Uint8Array) {
+    if (data !== undefined) {
       this._data = new Map();
-      switch (this._type) {
+
+      const inBuffer = new ArrayBuffer(data.length);
+      const inView = new Uint8Array(inBuffer);
+      data.forEach((value, i) => (inView[i] = value));
+
+      const stream = new BitStream(inBuffer);
+      stream.bigEndian = true;
+
+      const type = stream.readBits(2);
+      switch (type) {
+        /*
         case ClientReportType.TEMPLATE: {
           const templateId = stream.readBits(TEMPLATE_ID_SIZE);
           // loop template
           break;
         }
+        */
         case ClientReportType.KEY_VALUE: {
           while (stream.bitsLeft > 0) {
             const taskId = stream.readBits(TASK_ID_SIZE);
-            const data = stream.readBitStream(8); // todo, get size of task report
-            this._data.set(taskId, data.readArrayBuffer(1));
+            if (taskId === 0) {
+              break;
+            }
+            const length = this._config.getTask(taskId).reportMessageSize;
+            const inStream = stream.readBitStream(length);
+            inStream.bigEndian = true;
+
+            const outStream = new BitStream(
+              new ArrayBuffer(Math.ceil(length / 8)),
+            );
+            outStream.bigEndian = true;
+
+            outStream.writeBitStream(inStream, length);
+            outStream.index = 0;
+
+            this._data.set(taskId, outStream);
           }
           break;
         }
+        default:
+          throw new Error(`Template type ${type} not supported`);
       }
     } else {
       this._data = new Map();
-      this._type = v;
     }
   }
 
-  public write(taskId: number, data: ArrayBuffer): void {
-    this._data.set(taskId, data);
+  public write(taskId: number, inData: Uint8Array): void {
+    const length = this._config.getTask(taskId).reportMessageSize;
+
+    const inBuffer = new ArrayBuffer(inData.length);
+    const inView = new Uint8Array(inBuffer);
+    inData.forEach((value, i) => (inView[i] = value));
+
+    const inStream = new BitStream(inBuffer);
+    inStream.bigEndian = true;
+    const outStream = new BitStream(new ArrayBuffer(Math.ceil(length / 8)));
+    outStream.bigEndian = true;
+
+    outStream.writeBitStream(inStream, length);
+    outStream.index = 0;
+
+    this._data.set(taskId, outStream);
   }
 
-  public read(taskId: number): ArrayBuffer {
-    const data = this._data.has(taskId) ? this._data.get(taskId) : undefined;
-    if (!data) {
-      throw new Error('No data for this task');
+  public read(taskId: number): Uint8Array {
+    if (this._data.has(taskId)) {
+      const data = this._data.get(taskId);
+      if (data !== undefined) {
+        const output = data.readArrayBuffer(data.view.byteLength);
+        data.index = 0;
+        return output;
+      }
     }
-    return data;
+    throw new Error('No data for this task');
   }
 
-  public bytes(templateId?: number): ArrayBuffer {
+  public bytes(type: ClientReportType, templateId?: number): Uint8Array {
     const stream = new BitStream(new ArrayBuffer(MAX_SIZE));
-    switch (this._type) {
+    stream.bigEndian = true;
+    switch (type) {
       case ClientReportType.KEY_VALUE: {
-        stream.writeBits(this._type, 2);
-        for (const [k, v] of this._data) {
-          stream.writeBits(k, TASK_ID_SIZE);
-          stream.writeArrayBuffer(new BitStream(v), 8); // todo get bits from config size of task report
+        stream.writeBits(type, 2);
+        for (const [taskId, taskBitStream] of this._data) {
+          // write task id
+          stream.writeBits(taskId, TASK_ID_SIZE);
+          const length = this._config.getTask(taskId).reportMessageSize;
+          stream.writeBitStream(taskBitStream, length);
         }
         break;
       }
+      /*
       case ClientReportType.TEMPLATE: {
         if (!templateId) {
           throw new Error('Template ID Required');
@@ -134,13 +173,11 @@ export class ClientReport {
       case ClientReportType.SYSTEM:
       case ClientReportType.CUSTOM: {
         stream.writeBits(this._type, 2);
-      }
+      }*/
+      default:
+        throw new Error(`Template type ${type} not supported`);
     }
     stream.index = 0;
-    return stream.readArrayBuffer(MAX_SIZE);
-  }
-
-  public get type(): ClientReportType {
-    return this._type;
+    return stream.readArrayBuffer(stream.view.byteLength);
   }
 }
